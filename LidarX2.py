@@ -120,7 +120,7 @@ class LidarX2:
             return result
         # Get sample count in packet
         ls = self.serial.read(1)
-        sampleCount = int(ls.encode('hex'), 16)
+        sampleCount = int(ls.hex(), 16)
         if sampleCount == 0:
             return result
         # Get start angle
@@ -148,8 +148,8 @@ class LidarX2:
             # Get distance
             siL = data[i]
             siM = data[i+1]
-            checksum ^= (ord(siL) + ord(siM) * 256)
-            distance = float(ord(siL) + ord(siM) * 256)/4
+            checksum ^= ((siL) + (siM) * 256)
+            distance = float((siL) + (siM) * 256)/4
             # Get angle and correct value from distance
             angle = startAngle+(aDiff/float(sampleCount))*i/2
             angleCorrection = 0
