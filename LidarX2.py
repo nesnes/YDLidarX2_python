@@ -1,4 +1,4 @@
-from serial import Serial
+from serial import Serial #pip install pySerial
 from time import sleep
 from math import atan, pi
 from threading import Thread
@@ -99,6 +99,17 @@ class LidarX2:
                 lo = mid + 1
         l.insert(lo, m)
 
+    def __readByte(self):
+        # serial.read can return byte or str depending on python version...
+        return self.__strOrByteToInt(self.serial.read(1))
+    
+    def __strOrByteToInt(self, value):
+        if isinstance(value, str):
+            return int(value.encode('hex'), 16)
+        if isinstance(value, int):
+            return value
+        return int.from_bytes(value, byteorder='big')
+
     def __readMeasures(self):
         result = []
         # Check and flush serial
@@ -115,41 +126,44 @@ class LidarX2:
         if self.stopThread:
             return []
         # Check packet type
-        ct = self.serial.read(1)
-        if ct != b"\x00":
+        ct = self.__readByte()
+        if ct != 0:
             return result
         # Get sample count in packet
-        ls = self.serial.read(1)
-        sampleCount = int(ls.encode('hex'), 16)
+        ls = self.__readByte()
+        sampleCount = ls#int(ls.encode('hex'), 16)
         if sampleCount == 0:
             return result
         # Get start angle
-        fsaL = self.serial.read(1)
-        fsaM = self.serial.read(1)
-        fsa = ord(fsaL) + ord(fsaM) * 256
+        fsaL = self.__readByte()
+        fsaM = self.__readByte()
+        fsa = fsaL + fsaM * 256
         checksum ^= fsa
         startAngle = (fsa>>1)/64
         # Get end angle
-        lsaL = self.serial.read(1)
-        lsaM = self.serial.read(1)
-        lsa = ord(lsaL) + ord(lsaM) * 256
+        lsaL = self.__readByte()
+        lsaM = self.__readByte()
+        lsa = lsaL + lsaM * 256
         endAngle = (lsa>>1)/64
         # Compute angle diff
         aDiff = float(endAngle - startAngle)
         if (aDiff < 0):
             aDiff = aDiff + 360
         # Get checksum
-        csL = self.serial.read(1)
-        csM = self.serial.read(1)
-        cs = ord(csL) + ord(csM) * 256
+        csL = self.__readByte()
+        csM = self.__readByte()
+        cs = csL + csM * 256
         # Read and parse data
-        data = self.serial.read(sampleCount*2)
+        dataRaw = self.serial.read(sampleCount*2)
+        data = []
+        for i in range(0, sampleCount*2):
+            data.append(self.__strOrByteToInt(dataRaw[i]))
         for i in range(0, sampleCount*2, 2):
             # Get distance
             siL = data[i]
             siM = data[i+1]
-            checksum ^= (ord(siL) + ord(siM) * 256)
-            distance = float(ord(siL) + ord(siM) * 256)/4
+            checksum ^= (siL + siM * 256)
+            distance = float(siL + siM * 256)/4
             # Get angle and correct value from distance
             angle = startAngle+(aDiff/float(sampleCount))*i/2
             angleCorrection = 0
@@ -160,7 +174,7 @@ class LidarX2:
                 angle = angle-360
             # Append to result
             result.append(LidarMeasure(angle,distance))
-        checksum ^= (ord(ct) + ord(ls) * 256)
+        checksum ^= (ct + ls * 256)
         checksum ^= lsa
         # Validate checksum
         if checksum == cs:
